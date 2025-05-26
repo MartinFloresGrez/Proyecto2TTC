@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Lobby - Sesiones</title>
+    <link rel="stylesheet" href="lobby.css">
+</head>
+<body>
+    <h1>Sesiones</h1>
+    <ul id="lista-sesiones"></ul>
+    <button onclick="crearSesion()">Crear sesión</button>
+    <button onclick="registrarRostro()">Registrar rostro</button>
+
+    <script>
+        async function cargarSesiones() {
+            const res = await fetch('/sesiones');
+            const data = await res.json();
+            const lista = document.getElementById('lista-sesiones');
+            lista.innerHTML = '';
+            data.sesiones.forEach(s => {
+                const li = document.createElement('li');
+                li.textContent = (s.nombre || 'Sesión sin nombre') + " - Profesor: " + (s.profesor || 'Sin profesor');
+                // Hacer clickeable el elemento y pasar el id de la sesión
+                li.style.cursor = "pointer";
+                li.onclick = () => {
+                    // Usar _id si existe, si no, mostrar alerta
+                    if (s._id) {
+                        window.location.href = `/static/asistencia/asistencia.html?id=${s._id}`;
+                    } else {
+                        alert("Esta sesión no tiene ID en la base de datos.");
+                    }
+                };
+                lista.appendChild(li);
+            });
+        }
+
+        async function crearSesion() {
+            const nombre = prompt('Nombre de la sesión:');
+            if (!nombre) return;
+            const profesor = prompt('Nombre del profesor:');
+            if (!profesor) return;
+            await fetch('/sesiones', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({nombre, profesor})
+            });
+            cargarSesiones();
+        }
+
+        function registrarRostro() {
+            window.location.href = '/static/registro/registro.html';
+        }
+
+        cargarSesiones();
+    </script>
+</body>
+</html>

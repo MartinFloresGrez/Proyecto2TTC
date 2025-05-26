@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Asistencia</title>
+    <link rel="stylesheet" href="asistencia.css">
+</head>
+<body>
+    <h1>Asistencia</h1>
+    <button id="activarCamara">Activar cámara y marcar asistencia</button>
+    <button onclick="volverLobby()">Volver</button>
+    <div style="display: flex; gap: 40px; margin-top: 20px;">
+        <div>
+            <video id="video" width="320" height="240" autoplay style="display:none; border:1px solid #ccc;"></video>
+            <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+            <div id="nombreDetectado" style="text-align:center; font-size:1.2em; color:green;">Esperando detección...</div>
+        </div>
+        <div>
+            <h2>Usuarios presentes</h2>
+            <ul id="lista-asistencia"></ul>
+        </div>
+    </div>
+
+    <script>
+        let asistencia = [];
+        const nombreDiv = document.getElementById('nombreDetectado');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let stream = null;
+        let ws = null;
+        let detectando = false;
+
+        // Obtener el id de la sesión desde la URL
+        const params = new URLSearchParams(window.location.search);
+        const sesionId = params.get('id');
+
+        async function cargarAsistencia() {
+            // Aquí deberías hacer un fetch al backend para obtener la lista real
+            // Ejemplo:
+            // const res = await fetch(`/sesiones/${sesionId}/asistencia`);
+            // asistencia = await res.json();
+            // Por ahora, simulado:
+            const lista = document.getElementById('lista-asistencia');
+            lista.innerHTML = '';
+            asistencia.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = `${item.nombre} - ${item.fecha}`;
+                lista.appendChild(li);
+            });
+        }
+
+        document.getElementById('activarCamara').onclick = async function() {
+            if (detectando) return;
+            detectando = true;
+            video.style.display = 'block';
+            nombreDiv.textContent = "Esperando detección...";
+            // Acceder a la cámara
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+
+                ws = new WebSocket("ws://localhost:8000/ws");
+                ws.onopen = () => {
+                    // Enviar frames cada segundo
+                    const enviarFrame = setInterval(() => {
+                        if (!detectando) {
+                            clearInterval(enviarFrame);
+                            return;
+                        }
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageData = canvas.toDataURL("image/jpeg");
+                        ws.send(JSON.stringify({
+                            image: imageData
+                        }));
+                    }, 1000);
+                };
+
+                ws.onmessage = (event) => {
+                    const detecciones = JSON.parse(event.data);
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    if (detecciones.length === 0) {
+                        nombreDiv.textContent = "Nadie detectado";
+                    } else {
+                        // Solo tomamos el primer rostro detectado
+                        const d = detecciones[0];
+                        const [top, right, bottom, left] = d.coordenadas;
+                        ctx.strokeStyle = "red";
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(left, top, right - left, bottom - top);
+                        ctx.fillStyle = "green";
+                        ctx.font = "18px Arial";
+                        ctx.fillText(d.nombre, left + 5, top - 5);
+
+                        nombreDiv.textContent = d.nombre;
+
+                        if (d.nombre !== "Desconocido") {
+                            asistencia.push({
+                                nombre: d.nombre,
+                                fecha: new Date().toLocaleString()
+                            });
+                            cargarAsistencia();
+                            // Detener cámara y WebSocket
+                            stream.getTracks().forEach(track => track.stop());
+                            video.style.display = 'none';
+                            ws.close();
+                            detectando = false;
+                        }
+                    }
+                };
+
+                ws.onerror = () => {
+                    nombreDiv.textContent = "❌ Error de conexión con el servidor.";
+                    detectando = false;
+                };
+
+            } catch (e) {
+                alert('No se pudo acceder a la cámara');
+                nombreDiv.textContent = "❌ No se pudo acceder a la cámara.";
+                detectando = false;
+            }
+        };
+
+        function volverLobby() {
+            window.location.href = "../lobby/lobby.html";
+        }
+
+        cargarAsistencia();
+    </script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <title>Detección Facial Web</title>
+    <style>
+        video, canvas {
+            border: 1px solid black;
+            display: block;
+            margin: 10px auto;
+        }
+        #nombreDetectado {
+            text-align: center;
+            font-size: 1.5em;
+            color: green;
+        }
+        #botones {
+            text-align: center;
+            margin-top: 10px;
+        }
+        button, input {
+            margin: 5px;
+            padding: 10px;
+            font-size: 1em;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align:center;">Detección Facial en Vivo</h1>
+    <video id="video" width="640" height="480" autoplay></video>
+    <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+
+    <div id="nombreDetectado">Esperando detección...</div>
+
+    <div id="botones">
+        <input type="text" id="inputNombre" placeholder="Nombre para registrar" />
+        <button onclick="registrarRostro()">Registrar</button>
+        <button onclick="borrarRostro()">Borrar</button>
+        <button onclick="volverLobby()">Volver</button>
+    </div>
+
+    <script>
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const nombreDiv = document.getElementById("nombreDetectado");
+        const inputNombre = document.getElementById("inputNombre");
+
+        let detecciones = [];
+        let ultimaAccion = null;
+        let nombreParaRegistrar = "";
+
+        const ws = new WebSocket("ws://localhost:8000/ws");
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+
+                setInterval(() => {
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const imageData = canvas.toDataURL("image/jpeg");
+
+                    ws.send(JSON.stringify({
+                        image: imageData,
+                        accion: ultimaAccion,
+                        nombre: nombreParaRegistrar
+                    }));
+
+                    // Reiniciar
+                    ultimaAccion = null;
+                    nombreParaRegistrar = "";
+                }, 1000);
+            })
+            .catch(err => {
+                console.error("Cámara no disponible:", err);
+                nombreDiv.textContent = "❌ No se pudo acceder a la cámara.";
+            });
+
+        ws.onmessage = (event) => {
+            detecciones = JSON.parse(event.data);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            if (detecciones.length === 0) {
+                nombreDiv.textContent = "Nadie detectado";
+            } else {
+                detecciones.forEach(d => {
+                    const [top, right, bottom, left] = d.coordenadas;
+                    ctx.strokeStyle = "red";
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(left, top, right - left, bottom - top);
+                    ctx.fillStyle = "green";
+                    ctx.font = "18px Arial";
+                    ctx.fillText(d.nombre, left + 5, top - 5);
+                });
+
+                nombreDiv.textContent = detecciones.map(d => d.nombre).join(", ");
+            }
+        };
+
+        function registrarRostro() {
+            const nombre = inputNombre.value.trim();
+            if (nombre === "") {
+                alert("Por favor ingresa un nombre para registrar.");
+                return;
+            }
+            ultimaAccion = "registrar";
+            nombreParaRegistrar = nombre;
+        }
+
+        function borrarRostro() {
+            ultimaAccion = "borrar";
+        }
+
+        function volverLobby() {
+            window.location.href = "../lobby/lobby.html";
+        }
+    </script>
+</body>
+</html>
