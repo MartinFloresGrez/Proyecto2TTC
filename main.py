@@ -1,32 +1,41 @@
 import cv2
 import face_recognition
-import pickle
-import os
+import numpy as np
+import requests
 
-# Crear carpeta si no existe
-if not os.path.exists("encodings"):
-    os.makedirs("encodings")
-
-# Función para cargar registros
+# Función para cargar registros desde MongoDB API
 def cargar_registros():
-    encodings = []
-    nombres = []
-    for archivo in os.listdir("encodings"):
-        if archivo.endswith(".pkl"):
-            with open(f'encodings/{archivo}', 'rb') as f:
-                data = pickle.load(f)
-                encodings.append(data["encoding"])
-                nombres.append(data["nombre"])
-    return encodings, nombres
+    try:
+        response = requests.get("http://localhost:8000/rostros")
+        data = response.json()["rostros"]
+        encodings = [np.array(item["encoding"]) for item in data]
+        nombres = [item["nombre"] for item in data]
+        return encodings, nombres
+    except Exception as e:
+        print(f"Error al cargar desde la API: {e}")
+        return [], []
 
+# Función para borrar un rostro por nombre
+def borrar_rostro_api(nombre):
+    try:
+        response = requests.delete(f"http://localhost:8000/rostros/{nombre}")
+        if response.status_code == 200:
+            print(f"✅ {response.json()['mensaje']}")
+            return True
+        elif response.status_code == 404:
+            print("❌ Rostro no encontrado en la base de datos.")
+        else:
+            print(f"❌ Error al borrar: {response.text}")
+    except Exception as e:
+        print(f"❌ Error de conexión: {e}")
+    return False
+
+# Cargar registros desde la API al iniciar
 encodings_conocidos, nombres_conocidos = cargar_registros()
 
-# Abrir cámara
-cap = cv2.VideoCapture(2)
+cap = cv2.VideoCapture(1)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
-frame_count = 0
 
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 eye_cascade  = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
@@ -36,7 +45,6 @@ while True:
     if not ret:
         break
 
-    frame_count += 1
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -52,13 +60,11 @@ while True:
         for (ex, ey, ew, eh) in eyes:
             cv2.rectangle(roi_color, (ex, ey), (ex+ew, ey+eh), (0, 255, 0), 2)
 
-        # Coordenadas del rostro actual
         top = y
         right = x + w
         bottom = y + h
         left = x
 
-        # Redimensionar imagen y coordenadas
         small_rgb = cv2.resize(rgb, (0, 0), fx=0.5, fy=0.5)
         small_top = top // 2
         small_right = right // 2
@@ -80,10 +86,10 @@ while True:
 
     key = cv2.waitKey(1)
 
-    # Registrar rostros
+    # Registrar nuevo rostro
     if key == ord('r') and len(faces) > 0:
         for i, (x, y, w, h) in enumerate(faces):
-            print(f"[INFO] Registrando rostro {i+1} de {len(faces)}...")
+            print(f"[INFO] Registrando rostro {i+1}...")
 
             top = y
             right = x + w
@@ -99,53 +105,54 @@ while True:
             face_encoding = face_recognition.face_encodings(small_rgb, [(small_top, small_right, small_bottom, small_left)])
 
             if face_encoding:
-                cv2.destroyAllWindows()  # Pausar para input
-                nombre = input(f"Ingresa el nombre de la persona para rostro {i+1}: ")
+                cv2.destroyAllWindows()
+                nombre = input(f"Ingresa el nombre para rostro {i+1}: ")
 
-                data = {"nombre": nombre, "encoding": face_encoding[0]}
-                with open(f'encodings/{nombre}.pkl', 'wb') as f:
-                    pickle.dump(data, f)
-                print(f"Rostro de {nombre} registrado.")
+                payload = {
+                    "nombre": nombre,
+                    "encoding": face_encoding[0].tolist()
+                }
 
-                # Recargar registros
-                encodings_conocidos, nombres_conocidos = cargar_registros()
+                try:
+                    response = requests.post("http://localhost:8000/rostros", json=payload)
+                    if response.status_code == 200:
+                        print("✅ Rostro registrado en MongoDB.")
+                        encodings_conocidos, nombres_conocidos = cargar_registros()
+                    else:
+                        print(f"❌ Error al registrar: {response.text}")
+                except Exception as e:
+                    print(f"❌ Error de conexión: {e}")
 
-                cap = cv2.VideoCapture(2)
+                cap = cv2.VideoCapture(1)
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                ret, frame = cap.read()
+                if ret:
+                    cv2.imshow('Reconocimiento facial', frame)
             else:
-                print(f"No se pudo generar encoding facial para rostro {i+1}. Intenta nuevamente.")
+                print("❌ No se pudo generar encoding facial.")
 
-    # Borrar registros
+    # Borrar rostro
     elif key == ord('d'):
         cv2.destroyAllWindows()
-        print("=== Registros guardados ===")
+        print("\n=== Rostros registrados ===")
         for i, nombre in enumerate(nombres_conocidos):
             print(f"{i}: {nombre}")
 
         try:
-            index_borrar = int(input("Ingresa el número del registro a borrar (o -1 para cancelar): "))
-            if 0 <= index_borrar < len(nombres_conocidos):
-                nombre_a_borrar = nombres_conocidos[index_borrar]
-                archivo_a_borrar = f'encodings/{nombre_a_borrar}.pkl'
-
-                if os.path.exists(archivo_a_borrar):
-                    os.remove(archivo_a_borrar)
-                    print(f"Registro de {nombre_a_borrar} borrado.")
-                else:
-                    print("Archivo no encontrado.")
-
-                # Recargar registros
-                encodings_conocidos, nombres_conocidos = cargar_registros()
+            index = int(input("\nIngresa el número del rostro a borrar (o -1 para cancelar): "))
+            if 0 <= index < len(nombres_conocidos):
+                nombre_a_borrar = nombres_conocidos[index]
+                if borrar_rostro_api(nombre_a_borrar):
+                    encodings_conocidos, nombres_conocidos = cargar_registros()
             else:
-                print("Cancelado.")
+                print("❎ Cancelado.")
         except ValueError:
-            print("Entrada inválida. Cancelado.")
+            print("❎ Entrada inválida.")
 
-        cap = cv2.VideoCapture(2)
+        cap = cv2.VideoCapture(1)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        frame_count = 0
 
     elif key == 27:  # ESC
         break
