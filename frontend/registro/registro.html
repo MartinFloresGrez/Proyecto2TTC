@@ -1,42 +1,36 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8" />
-    <title>Detección Facial Web</title>
-    <style>
-        video, canvas {
-            border: 1px solid black;
-            display: block;
-            margin: 10px auto;
-        }
-        #nombreDetectado {
-            text-align: center;
-            font-size: 1.5em;
-            color: green;
-        }
-        #botones {
-            text-align: center;
-            margin-top: 10px;
-        }
-        button, input {
-            margin: 5px;
-            padding: 10px;
-            font-size: 1em;
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Rostro</title>
+    <link rel="stylesheet" href="/static/registro/registro.css">
 </head>
 <body>
-    <h1 style="text-align:center;">Detección Facial en Vivo</h1>
-    <video id="video" width="640" height="480" autoplay></video>
-    <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
-
-    <div id="nombreDetectado">Esperando detección...</div>
-
-    <div id="botones">
-        <input type="text" id="inputNombre" placeholder="Nombre para registrar" />
-        <button onclick="registrarRostro()">Registrar</button>
-        <button onclick="borrarRostro()">Borrar</button>
-        <button onclick="volverLobby()">Volver</button>
+    <div class="header">
+        <h1>Registro de Rostro</h1>
+    </div>
+    
+    <div class="container">
+        <div class="video-container">
+            <video id="video" width="640" height="480" autoplay></video>
+            <canvas id="canvas" width="640" height="480"></canvas>
+        </div>
+        
+        <div class="detection-status">
+            <div id="nombreDetectado">Esperando detección...</div>
+        </div>
+        
+        <div class="controls">
+            <div class="input-group">
+                <input type="text" id="inputNombre" placeholder="Nombre para registrar">
+            </div>
+            <div class="button-group">
+                <button onclick="registrarRostro()" class="btn">Registrar</button>
+                <button onclick="borrarRostro()" class="btn btn-secondary">Borrar</button>
+                <button onclick="volverLobby()" class="btn">Volver</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -112,7 +106,7 @@
         }
 
         function volverLobby() {
-            window.location.href = "../lobby/lobby.html";
+            window.location.href = "/";  // Usar la raíz en lugar de la ruta relativa
         }
     </script>
 </body>

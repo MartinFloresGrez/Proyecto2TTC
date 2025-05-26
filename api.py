@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pymongo import MongoClient
 from bson import ObjectId
 import numpy as np
@@ -56,6 +56,10 @@ def borrar_rostro(nombre: str):
 @app.get("/")
 def root():
     return FileResponse("frontend/lobby/lobby.html")
+
+@app.get("/static/lobby/lobby.html")
+def redirect_to_root():
+    return RedirectResponse("/")
 
 @app.get("/sesiones")
 def obtener_sesiones():

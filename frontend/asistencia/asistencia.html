@@ -2,22 +2,29 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Asistencia</title>
+    <title>Control de Asistencia</title>
     <link rel="stylesheet" href="asistencia.css">
 </head>
 <body>
-    <h1>Asistencia</h1>
-    <button id="activarCamara">Activar cámara y marcar asistencia</button>
-    <button onclick="volverLobby()">Volver</button>
-    <div style="display: flex; gap: 40px; margin-top: 20px;">
-        <div>
-            <video id="video" width="320" height="240" autoplay style="display:none; border:1px solid #ccc;"></video>
-            <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
-            <div id="nombreDetectado" style="text-align:center; font-size:1.2em; color:green;">Esperando detección...</div>
+    <div class="header">
+        <h1>Control de Asistencia</h1>
+        <div class="button-group">
+            <button id="activarCamara" class="btn">Activar cámara</button>
+            <button onclick="volverLobby()" class="btn btn-secondary">Volver</button>
         </div>
-        <div>
+    </div>
+
+    <div class="container">
+        <div class="card video-container">
+            <video id="video" width="320" height="240" autoplay style="display:none;"></video>
+            <canvas id="canvas" width="320" height="240"></canvas>
+            <div class="status">
+                <div id="nombreDetectado">Esperando detección...</div>
+            </div>
+        </div>
+        <div class="card attendance-container">
             <h2>Usuarios presentes</h2>
-            <ul id="lista-asistencia"></ul>
+            <ul id="lista-asistencia" class="attendance-list"></ul>
         </div>
     </div>
 
@@ -45,7 +52,16 @@
             lista.innerHTML = '';
             asistencia.forEach(item => {
                 const li = document.createElement('li');
-                li.textContent = `${item.nombre} - ${item.fecha}`;
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'name';
+                nameSpan.textContent = item.nombre;
+                
+                const timeSpan = document.createElement('span');
+                timeSpan.className = 'time';
+                timeSpan.textContent = item.fecha;
+                
+                li.appendChild(nameSpan);
+                li.appendChild(timeSpan);
                 lista.appendChild(li);
             });
         }
