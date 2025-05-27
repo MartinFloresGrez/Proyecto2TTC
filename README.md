@@ -19,4 +19,9 @@ Dar a instalar y listo.
 
 # En consola
 
-pip install cmake dlib face_recognition opencv-python
+pip install cmake dlib face_recognition opencv-python fastapi pymongo uvicorn
+
+
+# Página Web
+
+Abrir en http://localhost:8000/

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lobby - Sesiones</title>
+    <link rel="stylesheet" href="/static/lobby/lobby.css">
+</head>
+<body>
+    <!-- Modal para crear sesión -->
+    <div class="modal-overlay" id="crearSesionModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Crear nueva sesión</h2>
+            </div>
+            <div class="modal-body">
+                <label for="nombreSesion">Nombre de la sesión</label>
+                <input type="text" id="nombreSesion" placeholder="Ingrese el nombre de la sesión">
+                
+                <label for="nombreProfesor">Profesor</label>
+                <input type="text" id="nombreProfesor" placeholder="Ingrese el nombre del profesor">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="cerrarModal()">Cancelar</button>
+                <button class="btn" onclick="confirmarCrearSesion()">Crear</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="header">
+        <h1>Panel de Sesiones</h1>
+    </div>
+
+    <div class="container">
+        <div class="actions">
+            <button onclick="abrirModalSesion()" class="btn">Crear sesión</button>
+            <button onclick="registrarRostro()" class="btn btn-secondary">Registrar rostro</button>
+        </div>
+
+        <div class="session-list-container">
+            <ul id="lista-sesiones"></ul>
+        </div>
+    </div>
+
+    <script>
+        // Funciones para el modal
+        function abrirModalSesion() {
+            document.getElementById('nombreSesion').value = '';
+            document.getElementById('nombreProfesor').value = '';
+            document.getElementById('crearSesionModal').style.display = 'flex';
+        }
+        
+        function cerrarModal() {
+            document.getElementById('crearSesionModal').style.display = 'none';
+        }
+        
+        async function confirmarCrearSesion() {
+            const nombre = document.getElementById('nombreSesion').value.trim();
+            const profesor = document.getElementById('nombreProfesor').value.trim();
+            
+            if (!nombre) {
+                alert('El nombre de la sesión es obligatorio');
+                return;
+            }
+            
+            if (!profesor) {
+                alert('El nombre del profesor es obligatorio');
+                return;
+            }
+            
+            await fetch('/sesiones', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({nombre, profesor})
+            });
+            
+            cerrarModal();
+            cargarSesiones();
+        }
+
+        // Resto del código existente
+        async function cargarSesiones() {
+            const res = await fetch('/sesiones');
+            const data = await res.json();
+            const lista = document.getElementById('lista-sesiones');
+            lista.innerHTML = '';
+            
+            if (data.sesiones.length === 0) {
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                emptyState.textContent = 'No hay sesiones disponibles. Crea una nueva sesión para comenzar.';
+                lista.appendChild(emptyState);
+                return;
+            }
+            
+            data.sesiones.forEach(s => {
+                const li = document.createElement('li');
+                
+                const infoDiv = document.createElement('div');
+                
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'session-name';
+                nameDiv.textContent = s.nombre || 'Sesión sin nombre';
+                
+                const profDiv = document.createElement('div');
+                profDiv.className = 'session-professor';
+                profDiv.textContent = `Profesor: ${s.profesor || 'Sin profesor'}`;
+                
+                infoDiv.appendChild(nameDiv);
+                infoDiv.appendChild(profDiv);
+                li.appendChild(infoDiv);
+                
+                li.onclick = () => {
+                    if (s._id) {
+                        window.location.href = `/static/asistencia/asistencia.html?id=${s._id}`;
+                    } else {
+                        alert("Esta sesión no tiene ID en la base de datos.");
+                    }
+                };
+                
+                lista.appendChild(li);
+            });
+        }
+        
+        function registrarRostro() {
+            window.location.href = '/static/registro/registro.html';
+        }
+        
+        // Cerrar el modal si se hace clic fuera
+        window.onclick = function(event) {
+            const modal = document.getElementById('crearSesionModal');
+            if (event.target === modal) {
+                cerrarModal();
+            }
+        };
+
+        cargarSesiones();
+    </script>
+</body>
+</html>
