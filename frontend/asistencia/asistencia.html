@@ -112,16 +112,15 @@
                         nombreDiv.textContent = d.nombre;
 
                         if (d.nombre !== "Desconocido") {
-                            asistencia.push({
-                                nombre: d.nombre,
-                                fecha: new Date().toLocaleString()
-                            });
-                            cargarAsistencia();
-                            // Detener cámara y WebSocket
-                            stream.getTracks().forEach(track => track.stop());
-                            video.style.display = 'none';
-                            ws.close();
-                            detectando = false;
+                            // Verifica si ya existe la asistencia para este nombre
+                            const yaRegistrado = asistencia.some(item => item.nombre === d.nombre);
+                            if (!yaRegistrado) {
+                                asistencia.push({
+                                    nombre: d.nombre,
+                                    fecha: new Date().toLocaleString()
+                                });
+                                cargarAsistencia();
+                            }
                         }
                     }
                 };
