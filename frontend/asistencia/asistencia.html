@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Control de Asistencia</title>
+    <link rel="stylesheet" href="asistencia.css">
+    <style>
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 400px; /* Altura fija más grande */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        #canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            border-radius: var(--border-radius);
+            background-color: #f0f0f0;
+        }
+        
+        #video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Control de Asistencia</h1>
+        <div class="button-group">
+            <button id="activarCamara" class="btn">Activar cámara</button>
+            <button id="desactivarCamara" class="btn btn-danger" disabled>Desactivar cámara</button>
+            <button onclick="volverLobby()" class="btn btn-secondary">Volver</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="card video-container">
+            <video id="video" autoplay style="display:none;"></video>
+            <canvas id="canvas"></canvas>
+            <div class="status">
+                <div id="nombreDetectado">Esperando detección...</div>
+                <div id="nivelConfianza" style="font-size: 0.9em; color: #666;"></div>
+            </div>
+        </div>
+        <div class="card attendance-container">
+            <h2>Usuarios presentes</h2>
+            <ul id="lista-asistencia" class="attendance-list"></ul>
+        </div>
+    </div>
+
+    <script>
+        let asistencia = [];
+        const nombreDiv = document.getElementById('nombreDetectado');
+        const confianzaDiv = document.getElementById('nivelConfianza');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let stream = null;
+        let ws = null;
+        let detectando = false;
+        
+        // Ajustar canvas al tamaño de su contenedor
+        function ajustarCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight - 60; // Resta espacio para el status
+        }
+        
+        // Llamar a la función al cargar y redimensionar la ventana
+        window.addEventListener('load', ajustarCanvas);
+        window.addEventListener('resize', ajustarCanvas);
+        
+        // Buffer para almacenar detecciones de múltiples caras en 3 segundos
+        let faceBuffers = {}; // Un buffer para cada cara detectada, indexado por nombre
+        let bufferStartTime = null;
+        const BUFFER_DURATION = 3000; // 3 segundos en milisegundos
+        const CONFIDENCE_THRESHOLD = 0.5; // Umbral de confianza >50%
+
+        const activarCamaraBtn = document.getElementById('activarCamara');
+        const desactivarCamaraBtn = document.getElementById('desactivarCamara');
+
+        // Obtener el id de la sesión desde la URL
+        const params = new URLSearchParams(window.location.search);
+        const sesionId = params.get('id');
+
+        async function cargarAsistencia() {
+            const lista = document.getElementById('lista-asistencia');
+            lista.innerHTML = '';
+            asistencia.forEach(item => {
+                const li = document.createElement('li');
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'name';
+                nameSpan.textContent = item.nombre;
+                
+                const timeSpan = document.createElement('span');
+                timeSpan.className = 'time';
+                timeSpan.textContent = item.fecha;
+                
+                li.appendChild(nameSpan);
+                li.appendChild(timeSpan);
+                lista.appendChild(li);
+            });
+        }
+        
+        // Función para procesar el buffer de detecciones para una cara específica
+        function procesarBufferCara(nombre, detecciones) {
+            if (detecciones.length === 0) return null;
+            
+            // Calcular el nivel de confianza como porcentaje
+            const nivelConfianza = detecciones.length / (BUFFER_DURATION / 1000);
+            const porcentajeConfianza = Math.round((nivelConfianza / 3) * 100); // Ajustar a un máximo de 3 detecciones por segundo
+            
+            return {
+                nombre: nombre,
+                confianza: nivelConfianza,
+                porcentaje: porcentajeConfianza
+            };
+        }
+        
+        // Función para procesar todos los buffers
+        function procesarBuffers() {
+            if (Object.keys(faceBuffers).length === 0) return;
+            
+            const resultados = [];
+            
+            // Procesar cada cara detectada
+            for (const [nombre, buffer] of Object.entries(faceBuffers)) {
+                if (nombre !== "Desconocido") {
+                    const resultado = procesarBufferCara(nombre, buffer);
+                    if (resultado && resultado.confianza > CONFIDENCE_THRESHOLD) {
+                        resultados.push(resultado);
+                    }
+                }
+            }
+            
+            // Mostrar resultados
+            if (resultados.length > 0) {
+                // Crear mensaje con todas las caras detectadas
+                const nombresDetectados = resultados.map(r => r.nombre).join(", ");
+                nombreDiv.textContent = `Detectados: ${nombresDetectados}`;
+                
+                // Mostrar confianza promedio
+                const confianzaPromedio = Math.round(resultados.reduce((acc, r) => acc + r.porcentaje, 0) / resultados.length);
+                confianzaDiv.textContent = `Nivel de confianza promedio: ${confianzaPromedio}%`;
+                
+                // Registrar asistencia para cada cara con suficiente confianza
+                resultados.forEach(resultado => {
+                    if (resultado.confianza > CONFIDENCE_THRESHOLD) {
+                        const yaRegistrado = asistencia.some(item => item.nombre === resultado.nombre);
+                        if (!yaRegistrado) {
+                            asistencia.push({
+                                nombre: resultado.nombre,
+                                fecha: new Date().toLocaleString()
+                            });
+                        }
+                    }
+                });
+                
+                // Actualizar lista de asistencia
+                cargarAsistencia();
+            } else {
+                nombreDiv.textContent = "Ninguna cara identificada con confianza suficiente";
+                confianzaDiv.textContent = "";
+            }
+            
+            // Limpiar buffers
+            faceBuffers = {};
+            bufferStartTime = null;
+        }
+
+        activarCamaraBtn.onclick = async function() {
+            if (detectando) return;
+            detectando = true;
+            video.style.display = 'block';
+            nombreDiv.textContent = "Esperando detección...";
+            confianzaDiv.textContent = "";
+            activarCamaraBtn.disabled = true;
+            desactivarCamaraBtn.disabled = false;
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } 
+                });
+                video.srcObject = stream;
+
+                ws = new WebSocket("ws://localhost:8000/ws");
+                ws.onopen = () => {
+                    const enviarFrame = setInterval(() => {
+                        if (!detectando) {
+                            clearInterval(enviarFrame);
+                            return;
+                        }
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageData = canvas.toDataURL("image/jpeg");
+                        ws.send(JSON.stringify({
+                            image: imageData
+                        }));
+                    }, 1000);
+                };
+
+                ws.onmessage = (event) => {
+                    const detecciones = JSON.parse(event.data);
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                    if (detecciones.length === 0) {
+                        nombreDiv.textContent = "Nadie detectado";
+                        confianzaDiv.textContent = "";
+                    } else {
+                        // Iniciar el temporizador para el buffer si no está activo
+                        if (!bufferStartTime) {
+                            bufferStartTime = Date.now();
+                        }
+                        
+                        // Procesar todas las caras detectadas
+                        detecciones.forEach(d => {
+                            // Ajustar coordenadas a la escala del canvas actual
+                            const [top, right, bottom, left] = d.coordenadas;
+                            
+                            // Dibujar rectángulo y nombre en el canvas
+                            ctx.strokeStyle = "red";
+                            ctx.lineWidth = 2;
+                            ctx.strokeRect(left, top, right - left, bottom - top);
+                            ctx.fillStyle = "green";
+                            ctx.font = "18px Arial";
+                            ctx.fillText(d.nombre, left + 5, top - 5);
+                            
+                            // Agregar al buffer correspondiente
+                            if (d.nombre !== "Desconocido") {
+                                if (!faceBuffers[d.nombre]) {
+                                    faceBuffers[d.nombre] = [];
+                                }
+                                faceBuffers[d.nombre].push(d.nombre);
+                            }
+                        });
+                        
+                        // Actualizar texto con todas las caras detectadas
+                        const nombres = detecciones.map(d => d.nombre).join(", ");
+                        nombreDiv.textContent = `Detectando: ${nombres}`;
+                        
+                        // Verificar si han pasado 3 segundos
+                        if (Date.now() - bufferStartTime >= BUFFER_DURATION) {
+                            procesarBuffers();
+                        }
+                    }
+                };
+
+                ws.onerror = () => {
+                    nombreDiv.textContent = "❌ Error de conexión con el servidor.";
+                    confianzaDiv.textContent = "";
+                    detectando = false;
+                };
+
+            } catch (e) {
+                alert('No se pudo acceder a la cámara');
+                nombreDiv.textContent = "❌ No se pudo acceder a la cámara.";
+                confianzaDiv.textContent = "";
+                detectando = false;
+            }
+        };
+
+        desactivarCamaraBtn.onclick = function() {
+            if (!detectando) return;
+            detectando = false;
+            activarCamaraBtn.disabled = false;
+            desactivarCamaraBtn.disabled = true;
+            video.style.display = 'none';
+            nombreDiv.textContent = "Cámara desactivada";
+            confianzaDiv.textContent = "";
+
+            // Procesar cualquier detección pendiente en los buffers
+            if (Object.keys(faceBuffers).length > 0) {
+                procesarBuffers();
+            }
+
+            if (stream) {
+                const tracks = stream.getTracks();
+                tracks.forEach(track => track.stop());
+                stream = null;
+            }
+
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        };
+
+        function volverLobby() {
+            window.location.href = "../lobby/lobby.html";
+        }
+
+        cargarAsistencia();
+    </script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, RedirectResponse
 from pymongo import MongoClient
+from bson import ObjectId
 import numpy as np
 import base64
 import cv2
@@ -8,12 +10,13 @@ import face_recognition
 
 # ==== FastAPI App ====
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 # ==== Conexión MongoDB ====
-client = MongoClient("mongodb+srv://rostrosDb:123rostros123@rostrosdb.7gbe7s8.mongodb.net/?retryWrites=true&w=majority&appName=RostrosDb")
+client = MongoClient("mongodb://rostrosDb:123rostros123@ac-htsmw9f-shard-00-00.7gbe7s8.mongodb.net:27017,ac-htsmw9f-shard-00-01.7gbe7s8.mongodb.net:27017,ac-htsmw9f-shard-00-02.7gbe7s8.mongodb.net:27017/?ssl=true&replicaSet=atlas-hzhi1a-shard-0&authSource=admin&retryWrites=true&w=majority&appName=RostrosDb")
 db = client["RostrosDb"]
 coleccion = db["rostros"]
+sesiones = db["sesiones"]
 
 # ==== Cargar rostros desde MongoDB ====
 def cargar_registros():
@@ -47,6 +50,39 @@ def borrar_rostro(nombre: str):
         if resultado.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Rostro no encontrado.")
         return {"mensaje": "Rostro borrado exitosamente."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/")
+def root():
+    return FileResponse("frontend/lobby/lobby.html")
+
+@app.get("/static/lobby/lobby.html")
+def redirect_to_root():
+    return RedirectResponse("/")
+
+@app.get("/sesiones")
+def obtener_sesiones():
+    try:
+        lista = []
+        for sesion in sesiones.find({}):
+            sesion["_id"] = str(sesion["_id"])
+            lista.append(sesion)
+        return {"sesiones": lista}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/sesiones")
+def crear_sesion(sesion: dict):
+    try:
+        # Asegura que la sesión tenga los campos requeridos
+        nueva_sesion = {
+            "nombre": sesion.get("nombre"),
+            "profesor": sesion.get("profesor"),
+            "asistentes": []
+        }
+        sesiones.insert_one(nueva_sesion)
+        return {"mensaje": "Sesión creada exitosamente."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

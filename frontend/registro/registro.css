@@ -1,0 +1,100 @@
+@import url('../styles.css');
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.header h1 {
+  margin: 0;
+  border: none;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.video-container {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  margin-bottom: 20px;
+}
+
+#video {
+  width: 100%;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--gray-color);
+  box-shadow: var(--shadow);
+}
+
+#canvas {
+  display: none;
+}
+
+.detection-status {
+  text-align: center;
+  margin: 20px 0;
+  padding: 15px;
+  background-color: var(--light-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+}
+
+#nombreDetectado {
+  font-size: 1.5em;
+  color: var(--success-color);
+  font-weight: bold;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  width: 100%;
+  max-width: 640px;
+  margin-top: 20px;
+  background-color: white;
+  padding: 20px;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+}
+
+.input-group {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+#inputNombre {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid var(--gray-color);
+  border-radius: 4px;
+  font-size: 1em;
+}
+
+.button-group {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 680px) {
+  .input-group {
+    flex-direction: column;
+  }
+  
+  .button-group {
+    flex-direction: column;
+  }
+  
+  .btn {
+    width: 100%;
+  }
+}
