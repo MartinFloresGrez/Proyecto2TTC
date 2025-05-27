@@ -100,6 +100,7 @@ async def websocket_endpoint(websocket: WebSocket):
             img_data = data["image"].split(",")[1]
             accion = data.get("accion", None)
             nombre_nuevo = data.get("nombre", "").strip()
+            id_nuevo = data.get("id", None)  # Nuevo: obtener el id
 
             img_bytes = base64.b64decode(img_data)
             np_arr = np.frombuffer(img_bytes, np.uint8)
@@ -124,10 +125,18 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if accion == "registrar" and nombre == "Desconocido" and nombre_nuevo:
                     print(f"➡️ Registrando rostro como {nombre_nuevo}")
-                    coleccion.insert_one({
+                    # Buscar el id más alto actual y sumar 1
+                    ultimo = coleccion.find_one(
+                        {"id": {"$exists": True}},
+                        sort=[("id", -1)]
+                    )
+                    nuevo_id = (ultimo["id"] + 1) if ultimo and isinstance(ultimo["id"], int) else 1
+                    doc = {
                         "nombre": nombre_nuevo,
-                        "encoding": face_encoding.tolist()
-                    })
+                        "encoding": face_encoding.tolist(),
+                        "id": nuevo_id
+                    }
+                    coleccion.insert_one(doc)
                     encodings_conocidos, nombres_conocidos = cargar_registros()
 
                 elif accion == "borrar" and nombre != "Desconocido":

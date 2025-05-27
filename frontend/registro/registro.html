@@ -43,6 +43,43 @@
         let detecciones = [];
         let ultimaAccion = null;
         let nombreParaRegistrar = "";
+        let idParaRegistrar = "";
+
+        let registroBuffer = [];
+        let bufferStartTime = null;
+        const BUFFER_DURATION = 3000; // 3 segundos
+        const CONFIDENCE_THRESHOLD = 0.6; // 60% de frames deben coincidir
+
+        let esperandoRegistro = false;
+
+        function iniciarBufferRegistro() {
+            registroBuffer = [];
+            bufferStartTime = Date.now();
+            esperandoRegistro = true;
+            nombreDiv.textContent = "Mantén tu rostro visible durante 3 segundos...";
+        }
+
+        function procesarBufferRegistro(nombre) {
+            // Contar cuántos frames coinciden con el nombre
+            const coincidencias = registroBuffer.filter(n => n === nombre).length;
+            const confianza = coincidencias / registroBuffer.length;
+            return confianza;
+        }
+
+        function registrarRostro() {
+            const nombre = inputNombre.value.trim();
+            if (nombre === "") {
+                alert("Por favor ingresa un nombre para registrar.");
+                return;
+            }
+            if (esperandoRegistro) {
+                alert("Ya hay un registro en proceso. Espera a que termine.");
+                return;
+            }
+            nombreParaRegistrar = nombre;
+            idParaRegistrar = ""; // El backend asigna el id incremental
+            iniciarBufferRegistro();
+        }
 
         const ws = new WebSocket("ws://localhost:8000/ws");
 
@@ -57,12 +94,16 @@
                     ws.send(JSON.stringify({
                         image: imageData,
                         accion: ultimaAccion,
-                        nombre: nombreParaRegistrar
+                        nombre: nombreParaRegistrar,
+                        id: idParaRegistrar
                     }));
 
-                    // Reiniciar
-                    ultimaAccion = null;
-                    nombreParaRegistrar = "";
+                    // Reiniciar solo si se acaba de registrar
+                    if (ultimaAccion === "registrar") {
+                        ultimaAccion = null;
+                        nombreParaRegistrar = "";
+                        idParaRegistrar = "";
+                    }
                 }, 1000);
             })
             .catch(err => {
@@ -74,9 +115,8 @@
             detecciones = JSON.parse(event.data);
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            if (detecciones.length === 0) {
-                nombreDiv.textContent = "Nadie detectado";
-            } else {
+            let nombreDetectado = "Nadie detectado";
+            if (detecciones.length > 0) {
                 detecciones.forEach(d => {
                     const [top, right, bottom, left] = d.coordenadas;
                     ctx.strokeStyle = "red";
@@ -86,28 +126,43 @@
                     ctx.font = "18px Arial";
                     ctx.fillText(d.nombre, left + 5, top - 5);
                 });
+                nombreDetectado = detecciones.map(d => d.nombre).join(", ");
+            }
+            nombreDiv.textContent = nombreDetectado;
 
-                nombreDiv.textContent = detecciones.map(d => d.nombre).join(", ");
+            // Lógica de buffer para registro
+            if (esperandoRegistro) {
+                // Buscar si la cara detectada es "Desconocido" (no registrada aún)
+                let nombreCara = "Desconocido";
+                if (detecciones.length > 0) {
+                    // Si hay varias, tomamos la primera
+                    nombreCara = detecciones[0].nombre;
+                }
+                registroBuffer.push(nombreCara);
+
+                // Mostrar progreso
+                const elapsed = Date.now() - bufferStartTime;
+                const progreso = Math.min(100, Math.round((elapsed / BUFFER_DURATION) * 100));
+                nombreDiv.textContent = `Mantén tu rostro visible... ${progreso}%`;
+
+                if (elapsed >= BUFFER_DURATION) {
+                    esperandoRegistro = false;
+                    const confianza = procesarBufferRegistro("Desconocido");
+                    if (confianza >= CONFIDENCE_THRESHOLD) {
+                        // Ahora sí, enviar la acción de registrar
+                        ultimaAccion = "registrar";
+                        idParaRegistrar = ""; // El backend asigna el id incremental
+                        nombreDiv.textContent = "Registrando rostro...";
+                    } else {
+                        nombreDiv.textContent = "No se detectó tu rostro de forma consistente. Intenta de nuevo.";
+                    }
+                    // Limpiar buffer
+                    registroBuffer = [];
+                    bufferStartTime = null;
+                }
             }
         };
 
-        function registrarRostro() {
-            const nombre = inputNombre.value.trim();
-            if (nombre === "") {
-                alert("Por favor ingresa un nombre para registrar.");
-                return;
-            }
-            ultimaAccion = "registrar";
-            nombreParaRegistrar = nombre;
-        }
-
-        function borrarRostro() {
-            ultimaAccion = "borrar";
-        }
-
-        function volverLobby() {
-            window.location.href = "/";  // Usar la raíz en lugar de la ruta relativa
-        }
     </script>
 </body>
 </html>

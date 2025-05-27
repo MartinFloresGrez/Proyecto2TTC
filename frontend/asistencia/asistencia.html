@@ -8,7 +8,7 @@
         .video-container {
             position: relative;
             width: 100%;
-            height: 400px; /* Altura fija más grande */
+            height: 700px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -30,6 +30,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
+            display: none; /* Always hidden, used only as source */
         }
     </style>
 </head>
@@ -37,17 +38,17 @@
     <div class="header">
         <h1>Control de Asistencia</h1>
         <div class="button-group">
-            <button id="activarCamara" class="btn">Activar cámara</button>
-            <button id="desactivarCamara" class="btn btn-danger" disabled>Desactivar cámara</button>
+            <button id="toggleCamara" class="btn">Activar cámara</button>
+            <button id="toggleDeteccion" class="btn" disabled>Desactivar detección</button>
             <button onclick="volverLobby()" class="btn btn-secondary">Volver</button>
         </div>
     </div>
 
     <div class="container">
         <div class="card video-container">
-            <video id="video" autoplay style="display:none;"></video>
+            <video id="video" autoplay></video>
             <canvas id="canvas"></canvas>
-            <div class="status">
+            <div class="status"></div>
                 <div id="nombreDetectado">Esperando detección...</div>
                 <div id="nivelConfianza" style="font-size: 0.9em; color: #666;"></div>
             </div>
@@ -68,6 +69,7 @@
         let stream = null;
         let ws = null;
         let detectando = false;
+        let mostrarDetecciones = true;
         
         // Ajustar canvas al tamaño de su contenedor
         function ajustarCanvas() {
@@ -86,8 +88,8 @@
         const BUFFER_DURATION = 3000; // 3 segundos en milisegundos
         const CONFIDENCE_THRESHOLD = 0.5; // Umbral de confianza >50%
 
-        const activarCamaraBtn = document.getElementById('activarCamara');
-        const desactivarCamaraBtn = document.getElementById('desactivarCamara');
+        const toggleCamaraBtn = document.getElementById('toggleCamara');
+        const toggleDeteccionBtn = document.getElementById('toggleDeteccion');
 
         // Obtener el id de la sesión desde la URL
         const params = new URLSearchParams(window.location.search);
@@ -178,105 +180,120 @@
             bufferStartTime = null;
         }
 
-        activarCamaraBtn.onclick = async function() {
-            if (detectando) return;
-            detectando = true;
-            video.style.display = 'block';
-            nombreDiv.textContent = "Esperando detección...";
-            confianzaDiv.textContent = "";
-            activarCamaraBtn.disabled = true;
-            desactivarCamaraBtn.disabled = false;
+        toggleCamaraBtn.onclick = async function() {
+            if (!detectando) {
+                // Activar cámara
+                detectando = true;
+                nombreDiv.textContent = "Esperando detección...";
+                confianzaDiv.textContent = "";
+                toggleCamaraBtn.textContent = "Desactivar cámara";
+                toggleCamaraBtn.classList.add("btn-danger");
+                toggleDeteccionBtn.disabled = false;
 
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    } 
-                });
-                video.srcObject = stream;
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { 
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        } 
+                    });
+                    video.srcObject = stream;
 
-                ws = new WebSocket("ws://localhost:8000/ws");
-                ws.onopen = () => {
-                    const enviarFrame = setInterval(() => {
-                        if (!detectando) {
-                            clearInterval(enviarFrame);
-                            return;
+                    // Dibujar el video en el canvas continuamente
+                    const renderCanvas = () => {
+                        if (detectando) {
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            requestAnimationFrame(renderCanvas);
                         }
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const imageData = canvas.toDataURL("image/jpeg");
-                        ws.send(JSON.stringify({
-                            image: imageData
-                        }));
-                    }, 1000);
-                };
+                    };
+                    renderCanvas();
 
-                ws.onmessage = (event) => {
-                    const detecciones = JSON.parse(event.data);
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                    if (detecciones.length === 0) {
-                        nombreDiv.textContent = "Nadie detectado";
-                        confianzaDiv.textContent = "";
-                    } else {
-                        // Iniciar el temporizador para el buffer si no está activo
-                        if (!bufferStartTime) {
-                            bufferStartTime = Date.now();
-                        }
-                        
-                        // Procesar todas las caras detectadas
-                        detecciones.forEach(d => {
-                            // Ajustar coordenadas a la escala del canvas actual
-                            const [top, right, bottom, left] = d.coordenadas;
-                            
-                            // Dibujar rectángulo y nombre en el canvas
-                            ctx.strokeStyle = "red";
-                            ctx.lineWidth = 2;
-                            ctx.strokeRect(left, top, right - left, bottom - top);
-                            ctx.fillStyle = "green";
-                            ctx.font = "18px Arial";
-                            ctx.fillText(d.nombre, left + 5, top - 5);
-                            
-                            // Agregar al buffer correspondiente
-                            if (d.nombre !== "Desconocido") {
-                                if (!faceBuffers[d.nombre]) {
-                                    faceBuffers[d.nombre] = [];
-                                }
-                                faceBuffers[d.nombre].push(d.nombre);
+                    ws = new WebSocket("ws://localhost:8000/ws");
+                    ws.onopen = () => {
+                        const enviarFrame = setInterval(() => {
+                            if (!detectando) {
+                                clearInterval(enviarFrame);
+                                return;
                             }
-                        });
-                        
-                        // Actualizar texto con todas las caras detectadas
-                        const nombres = detecciones.map(d => d.nombre).join(", ");
-                        nombreDiv.textContent = `Detectando: ${nombres}`;
-                        
-                        // Verificar si han pasado 3 segundos
-                        if (Date.now() - bufferStartTime >= BUFFER_DURATION) {
-                            procesarBuffers();
-                        }
-                    }
-                };
+                            const imageData = canvas.toDataURL("image/jpeg");
+                            ws.send(JSON.stringify({
+                                image: imageData
+                            }));
+                        }, 1000);
+                    };
 
-                ws.onerror = () => {
-                    nombreDiv.textContent = "❌ Error de conexión con el servidor.";
+                    ws.onmessage = (event) => {
+                        const detecciones = JSON.parse(event.data);
+
+                        if (detecciones.length === 0) {
+                            nombreDiv.textContent = "Nadie detectado";
+                            confianzaDiv.textContent = "";
+                        } else {
+                            // Iniciar el temporizador para el buffer si no está activo
+                            if (!bufferStartTime) {
+                                bufferStartTime = Date.now();
+                            }
+                            
+                            // Procesar todas las caras detectadas
+                            detecciones.forEach(d => {
+                                // Ajustar coordenadas a la escala del canvas actual
+                                const [top, right, bottom, left] = d.coordenadas;
+                                
+                                // Dibujar rectángulo y nombre en el canvas si mostrarDetecciones está activo
+                                if (mostrarDetecciones) {
+                                    ctx.strokeStyle = "red";
+                                    ctx.lineWidth = 2;
+                                    ctx.strokeRect(left, top, right - left, bottom - top);
+                                    ctx.fillStyle = "green";
+                                    ctx.font = "18px Arial";
+                                    ctx.fillText(d.nombre, left + 5, top - 5);
+                                }
+                                
+                                // Agregar al buffer correspondiente
+                                if (d.nombre !== "Desconocido") {
+                                    if (!faceBuffers[d.nombre]) {
+                                        faceBuffers[d.nombre] = [];
+                                    }
+                                    faceBuffers[d.nombre].push(d.nombre);
+                                }
+                            });
+                            
+                            // Actualizar texto con todas las caras detectadas
+                            const nombres = detecciones.map(d => d.nombre).join(", ");
+                            nombreDiv.textContent = `Detectando: ${nombres}`;
+                            
+                            // Verificar si han pasado 3 segundos
+                            if (Date.now() - bufferStartTime >= BUFFER_DURATION) {
+                                procesarBuffers();
+                            }
+                        }
+                    };
+
+                    ws.onerror = () => {
+                        nombreDiv.textContent = "❌ Error de conexión con el servidor.";
+                        confianzaDiv.textContent = "";
+                        detectando = false;
+                        desactivarCamara();
+                    };
+
+                } catch (e) {
+                    alert('No se pudo acceder a la cámara');
+                    nombreDiv.textContent = "❌ No se pudo acceder a la cámara.";
                     confianzaDiv.textContent = "";
                     detectando = false;
-                };
-
-            } catch (e) {
-                alert('No se pudo acceder a la cámara');
-                nombreDiv.textContent = "❌ No se pudo acceder a la cámara.";
-                confianzaDiv.textContent = "";
-                detectando = false;
+                    desactivarCamara();
+                }
+            } else {
+                // Desactivar cámara
+                desactivarCamara();
             }
         };
 
-        desactivarCamaraBtn.onclick = function() {
-            if (!detectando) return;
+        function desactivarCamara() {
             detectando = false;
-            activarCamaraBtn.disabled = false;
-            desactivarCamaraBtn.disabled = true;
-            video.style.display = 'none';
+            toggleCamaraBtn.textContent = "Activar cámara";
+            toggleCamaraBtn.classList.remove("btn-danger");
+            toggleDeteccionBtn.disabled = true;
             nombreDiv.textContent = "Cámara desactivada";
             confianzaDiv.textContent = "";
 
@@ -295,6 +312,14 @@
                 ws.close();
                 ws = null;
             }
+
+            // Limpiar el canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        toggleDeteccionBtn.onclick = function() {
+            mostrarDetecciones = !mostrarDetecciones;
+            toggleDeteccionBtn.textContent = mostrarDetecciones ? "Desactivar detección" : "Activar detección";
         };
 
         function volverLobby() {
