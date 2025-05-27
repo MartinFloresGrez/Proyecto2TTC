@@ -58,6 +58,9 @@
             esperandoRegistro = true;
             nombreDiv.textContent = "Mantén tu rostro visible durante 3 segundos...";
         }
+        function volverLobby() {
+            window.location.href = "/"; // O ajusta la ruta si tu lobby está en otra URL
+        }
 
         function procesarBufferRegistro(nombre) {
             // Contar cuántos frames coinciden con el nombre
@@ -86,25 +89,6 @@
         navigator.mediaDevices.getUserMedia({ video: true })
             .then(stream => {
                 video.srcObject = stream;
-
-                setInterval(() => {
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    const imageData = canvas.toDataURL("image/jpeg");
-
-                    ws.send(JSON.stringify({
-                        image: imageData,
-                        accion: ultimaAccion,
-                        nombre: nombreParaRegistrar,
-                        id: idParaRegistrar
-                    }));
-
-                    // Reiniciar solo si se acaba de registrar
-                    if (ultimaAccion === "registrar") {
-                        ultimaAccion = null;
-                        nombreParaRegistrar = "";
-                        idParaRegistrar = "";
-                    }
-                }, 1000);
             })
             .catch(err => {
                 console.error("Cámara no disponible:", err);
@@ -163,6 +147,24 @@
             }
         };
 
+        setInterval(() => {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL("image/jpeg");
+
+            ws.send(JSON.stringify({
+                image: imageData,
+                accion: ultimaAccion,
+                nombre: nombreParaRegistrar,
+                id: idParaRegistrar
+            }));
+
+            // Reiniciar solo si se acaba de registrar
+            if (ultimaAccion === "registrar") {
+                ultimaAccion = null;
+                nombreParaRegistrar = "";
+                idParaRegistrar = "";
+            }
+        }, 1000);
     </script>
 </body>
 </html>
