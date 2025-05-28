@@ -124,6 +124,43 @@
             idParaRegistrar = ""; // El backend asigna el id incremental
             iniciarBufferRegistro();
         }
+        
+        function borrarRostro() {
+            // Verificar si hay rostros detectados
+            if (detecciones.length === 0) {
+                alert("No hay rostros detectados para borrar.");
+                return;
+            }
+            
+            // Obtener el primer rostro detectado que no sea "Desconocido"
+            const rostroDetectado = detecciones.find(d => d.nombre !== "Desconocido");
+            
+            if (!rostroDetectado) {
+                alert("No hay rostros reconocidos para borrar. Solo se pueden borrar rostros ya registrados.");
+                return;
+            }
+            
+            // Confirmar que el usuario quiere borrar este rostro
+            if (confirm(`¿Estás seguro que deseas borrar el registro de ${rostroDetectado.nombre}?`)) {
+                nombreDiv.textContent = `Borrando rostro de ${rostroDetectado.nombre}...`;
+                
+                // Establecer la acción para el próximo envío al WebSocket
+                ultimaAccion = "borrar";
+                
+                // No es necesario establecer nombreParaRegistrar porque el backend
+                // usará el nombre detectado directamente
+                
+                // La acción de borrado se completará en el siguiente ciclo del setInterval
+                // que ya está enviando datos al WebSocket
+                
+                // Mostraremos una retroalimentación temporal
+                setTimeout(() => {
+                    if (nombreDiv.textContent === `Borrando rostro de ${rostroDetectado.nombre}...`) {
+                        nombreDiv.textContent = `El rostro de ${rostroDetectado.nombre} ha sido eliminado.`;
+                    }
+                }, 2000);
+            }
+        }
 
         const ws = new WebSocket("ws://localhost:8000/ws");
 
@@ -166,8 +203,8 @@
                 nombreDetectado = detecciones.map(d => d.nombre).join(", ");
             }
             
-            // Solo mostrar nombre detectado si no estamos en proceso de registro
-            if (!esperandoRegistro) {
+            // Solo mostrar nombre detectado si no estamos en proceso de registro o borrado
+            if (!esperandoRegistro && ultimaAccion !== "borrar") {
                 nombreDiv.textContent = nombreDetectado;
             }
             
@@ -202,8 +239,8 @@
                 id: idParaRegistrar
             }));
 
-            // Reiniciar solo si se acaba de registrar
-            if (ultimaAccion === "registrar") {
+            // Reiniciar solo si se acaba de registrar o borrar
+            if (ultimaAccion === "registrar" || ultimaAccion === "borrar") {
                 ultimaAccion = null;
                 nombreParaRegistrar = "";
                 idParaRegistrar = "";

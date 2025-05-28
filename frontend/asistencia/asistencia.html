@@ -61,7 +61,7 @@
         <h1>Control de Asistencia</h1>
         <div class="button-group">
             <button id="toggleCamara" class="btn">Activar cámara</button>
-            <button id="toggleDeteccion" class="btn" disabled>Desactivar detección</button>
+            <button id="toggleDeteccion" class="btn" disabled style="display: none;">Desactivar detección</button>
             <button onclick="volverLobby()" class="btn btn-secondary">Volver</button>
         </div>
     </div>
@@ -267,7 +267,7 @@
                 
                 // Mostrar confianza promedio
                 const confianzaPromedio = Math.round(resultados.reduce((acc, r) => acc + r.porcentaje, 0) / resultados.length);
-                confianzaDiv.textContent = `Nivel de confianza promedio: ${confianzaPromedio}%`;
+                confianzaDiv.textContent = ``;
                 
                 // Registrar asistencia para cada cara con suficiente confianza
                 resultados.forEach(resultado => {
