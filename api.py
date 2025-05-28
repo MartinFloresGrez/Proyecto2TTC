@@ -7,6 +7,7 @@ import numpy as np
 import base64
 import cv2
 import face_recognition
+import datetime
 
 # ==== FastAPI App ====
 app = FastAPI()
@@ -86,6 +87,61 @@ def crear_sesion(sesion: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/sesiones/{sesion_id}/asistencia")
+def registrar_asistencia(sesion_id: str, datos: dict):
+    try:
+        # Validar datos recibidos
+        if "nombre" not in datos:
+            raise HTTPException(status_code=400, detail="Falta el nombre del asistente")
+        
+        nombre = datos["nombre"]
+        fecha = datos.get("fecha", datetime.datetime.now().isoformat())
+        
+        # Convertir el ID de string a ObjectId
+        sesion_id_obj = ObjectId(sesion_id)
+        
+        # Verificar si el asistente ya está registrado
+        sesion = sesiones.find_one({"_id": sesion_id_obj})
+        if not sesion:
+            raise HTTPException(status_code=404, detail="Sesión no encontrada")
+            
+        asistentes = sesion.get("asistentes", [])
+        
+        # Verificar si el asistente ya está en la lista
+        for asistente in asistentes:
+            if asistente.get("nombre") == nombre:
+                return {"mensaje": "Asistente ya registrado"}
+        
+        # Agregar el nuevo asistente
+        resultado = sesiones.update_one(
+            {"_id": sesion_id_obj},
+            {"$push": {"asistentes": {"nombre": nombre, "fecha": fecha}}}
+        )
+        
+        if resultado.modified_count == 1:
+            return {"mensaje": "Asistencia registrada correctamente"}
+        else:
+            raise HTTPException(status_code=500, detail="No se pudo registrar la asistencia")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/sesiones/{sesion_id}")
+def obtener_sesion(sesion_id: str):
+    try:
+        sesion_id_obj = ObjectId(sesion_id)
+        sesion = sesiones.find_one({"_id": sesion_id_obj})
+        
+        if not sesion:
+            raise HTTPException(status_code=404, detail="Sesión no encontrada")
+        
+        # Convertir el ObjectId a string para que sea serializable en JSON
+        sesion["_id"] = str(sesion["_id"])
+        return sesion
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==== WebSocket para detección en tiempo real desde navegador ====
 
 @app.websocket("/ws")
@@ -100,6 +156,7 @@ async def websocket_endpoint(websocket: WebSocket):
             img_data = data["image"].split(",")[1]
             accion = data.get("accion", None)
             nombre_nuevo = data.get("nombre", "").strip()
+            id_nuevo = data.get("id", None)  # Nuevo: obtener el id
 
             img_bytes = base64.b64decode(img_data)
             np_arr = np.frombuffer(img_bytes, np.uint8)
@@ -124,10 +181,18 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if accion == "registrar" and nombre == "Desconocido" and nombre_nuevo:
                     print(f"➡️ Registrando rostro como {nombre_nuevo}")
-                    coleccion.insert_one({
+                    # Buscar el id más alto actual y sumar 1
+                    ultimo = coleccion.find_one(
+                        {"id": {"$exists": True}},
+                        sort=[("id", -1)]
+                    )
+                    nuevo_id = (ultimo["id"] + 1) if ultimo and isinstance(ultimo["id"], int) else 1
+                    doc = {
                         "nombre": nombre_nuevo,
-                        "encoding": face_encoding.tolist()
-                    })
+                        "encoding": face_encoding.tolist(),
+                        "id": nuevo_id
+                    }
+                    coleccion.insert_one(doc)
                     encodings_conocidos, nombres_conocidos = cargar_registros()
 
                 elif accion == "borrar" and nombre != "Desconocido":
