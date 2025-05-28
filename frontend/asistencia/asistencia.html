@@ -45,6 +45,15 @@
         #lista-asistencia button:hover {
             background: #f8d7da;
         }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        #lista-asistencia li {
+            transition: all 0.3s ease;
+        }
     </style>
 </head>
 <body>
@@ -98,8 +107,8 @@
         // Buffer para almacenar detecciones de múltiples caras en 3 segundos
         let faceBuffers = {}; // Un buffer para cada cara detectada, indexado por nombre
         let bufferStartTime = null;
-        const BUFFER_DURATION = 3000; // 3 segundos en milisegundos
-        const CONFIDENCE_THRESHOLD = 0.5; // Umbral de confianza >50%
+        const BUFFER_DURATION = 1500; // Reducido a 1.5 segundos (antes era 3000ms)
+        const CONFIDENCE_THRESHOLD = 0.3; // Umbral de confianza reducido para detección más rápida (antes 0.5)
 
         const toggleCamaraBtn = document.getElementById('toggleCamara');
         const toggleDeteccionBtn = document.getElementById('toggleDeteccion');
@@ -162,6 +171,9 @@
                 fecha: new Date(asistente.fecha).toLocaleString()
             }));
             
+            // Actualizar el conjunto de caras ya detectadas
+            asistencia.forEach(item => detectedFaces.add(item.nombre));
+            
             // Actualizar la interfaz
             const lista = document.getElementById('lista-asistencia');
             lista.innerHTML = '';
@@ -200,27 +212,47 @@
         }
         
         // Función para procesar el buffer de detecciones para una cara específica
-        function procesarBufferCara(nombre, detecciones, totalFrames) {
-            if (detecciones.length === 0 || totalFrames === 0) return null;
-            const porcentajeConfianza = Math.round((detecciones.length / totalFrames) * 100);
+        function procesarBufferCara(nombre, detecciones) {
+            if (detecciones.length === 0) return null;
+
+            // Calcular el nivel de confianza como porcentaje
+            const nivelConfianza = detecciones.length / (BUFFER_DURATION / 1000);
+            const porcentajeConfianza = Math.round((nivelConfianza / 3) * 100); // Ajustar a un máximo de 3 detecciones por segundo
+
             return {
                 nombre: nombre,
-                confianza: detecciones.length / totalFrames,
+                confianza: nivelConfianza,
                 porcentaje: porcentajeConfianza
             };
         }
         
+        // Función para procesar el buffer de detecciones para una cara específica
+        function procesarBufferCara(nombre, detecciones) {
+            if (detecciones.length === 0) return null;
+            
+            // Calcular el nivel de confianza como porcentaje
+            const nivelConfianza = detecciones.length / (BUFFER_DURATION / 1000);
+            const porcentajeConfianza = Math.round((nivelConfianza / 3) * 100); // Ajustar a un máximo de 3 detecciones por segundo
+            
+            return {
+                nombre: nombre,
+                confianza: nivelConfianza,
+                porcentaje: porcentajeConfianza
+            };
+        }
+        
+        let detectedFaces = new Set(); // Para almacenar nombres de rostros ya registrados
+
         // Función para procesar todos los buffers
         function procesarBuffers() {
             if (Object.keys(faceBuffers).length === 0) return;
-
-            // Calcular el total de frames recibidos en el buffer
-            const totalFrames = Object.values(faceBuffers).reduce((acc, arr) => acc + arr.length, 0);
-
+            
             const resultados = [];
+            
+            // Procesar cada cara detectada
             for (const [nombre, buffer] of Object.entries(faceBuffers)) {
-                if (nombre !== "Desconocido") {
-                    const resultado = procesarBufferCara(nombre, buffer, totalFrames);
+                if (nombre !== "Desconocido" && !detectedFaces.has(nombre)) {
+                    const resultado = procesarBufferCara(nombre, buffer);
                     if (resultado && resultado.confianza > CONFIDENCE_THRESHOLD) {
                         resultados.push(resultado);
                     }
@@ -243,10 +275,17 @@
                         const yaRegistrado = asistencia.some(item => item.nombre === resultado.nombre);
                         if (!yaRegistrado) {
                             // Agregar a la lista local
-                            asistencia.push({
+                            const nuevaAsistencia = {
                                 nombre: resultado.nombre,
                                 fecha: new Date().toLocaleString()
-                            });
+                            };
+                            asistencia.push(nuevaAsistencia);
+                            
+                            // Actualizar la lista visualmente de inmediato
+                            actualizarListaUI(nuevaAsistencia);
+                            
+                            // Marcar este rostro como ya procesado
+                            detectedFaces.add(resultado.nombre);
                             
                             // Enviar al backend para guardar en la sesión
                             registrarAsistenciaBackend(resultado.nombre)
@@ -258,17 +297,53 @@
                         }
                     }
                 });
-                
-                // Actualizar lista de asistencia
-                cargarAsistencia();
             } else {
                 nombreDiv.textContent = "Ninguna cara identificada con confianza suficiente";
                 confianzaDiv.textContent = "";
             }
-            
+
             // Limpiar buffers
             faceBuffers = {};
             bufferStartTime = null;
+        }
+
+        // Nueva función para actualizar la UI inmediatamente sin esperar al backend
+        function actualizarListaUI(nuevoItem) {
+            const lista = document.getElementById('lista-asistencia');
+            const li = document.createElement('li');
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'name';
+            nameSpan.textContent = nuevoItem.nombre;
+            
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'time';
+            timeSpan.textContent = nuevoItem.fecha;
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = '❌';
+            deleteBtn.className = 'btn btn-danger btn-sm';
+            deleteBtn.style.marginLeft = '10px';
+            deleteBtn.onclick = async () => {
+                if (confirm(`¿Eliminar a ${nuevoItem.nombre} de la asistencia?`)) {
+                    const exito = await eliminarAsistenciaBackend(nuevoItem.nombre);
+                    if (exito) {
+                        // Quitar de la lista local y recargar
+                        asistencia = asistencia.filter(a => a.nombre !== nuevoItem.nombre);
+                        detectedFaces.delete(nuevoItem.nombre); // También quitar del conjunto de detectados
+                        cargarAsistencia();
+                    } else {
+                        alert('No se pudo eliminar del backend.');
+                    }
+                }
+            };
+            
+            li.appendChild(nameSpan);
+            li.appendChild(timeSpan);
+            li.appendChild(deleteBtn);
+            
+            // Añadir la animación de entrada
+            li.style.animation = 'fadeIn 0.3s ease-in';
+            lista.appendChild(li);
         }
 
         async function registrarAsistenciaBackend(nombre) {
@@ -340,7 +415,7 @@
                             ws.send(JSON.stringify({
                                 image: imageData
                             }));
-                        }, 1000);
+                        }, 500); // Enviar cada 500ms en lugar de 1000ms para detección más rápida
                     };
 
                     ws.onmessage = (event) => {
@@ -357,21 +432,28 @@
                             
                             // Procesar todas las caras detectadas
                             detecciones.forEach(d => {
-                                // Ajustar coordenadas a la escala del canvas actual
                                 const [top, right, bottom, left] = d.coordenadas;
+                                const yaRegistrado = detectedFaces.has(d.nombre);
                                 
                                 // Dibujar rectángulo y nombre en el canvas si mostrarDetecciones está activo
                                 if (mostrarDetecciones) {
-                                    ctx.strokeStyle = "red";
+                                    // Cambiar el color según si ya está registrado
+                                    ctx.strokeStyle = yaRegistrado ? "green" : "red";
                                     ctx.lineWidth = 2;
                                     ctx.strokeRect(left, top, right - left, bottom - top);
-                                    ctx.fillStyle = "green";
+                                    
+                                    // Texto con prefijo si ya está registrado
+                                    ctx.fillStyle = yaRegistrado ? "green" : "#ff9900";
                                     ctx.font = "18px Arial";
-                                    ctx.fillText(d.nombre, left + 5, top - 5);
+                                    ctx.fillText(
+                                        yaRegistrado ? `✓ ${d.nombre}` : d.nombre, 
+                                        left + 5, 
+                                        top - 5
+                                    );
                                 }
                                 
-                                // Agregar al buffer correspondiente
-                                if (d.nombre !== "Desconocido") {
+                                // Solo añadir al buffer si no está ya registrado
+                                if (d.nombre !== "Desconocido" && !yaRegistrado) {
                                     if (!faceBuffers[d.nombre]) {
                                         faceBuffers[d.nombre] = [];
                                     }
@@ -379,11 +461,14 @@
                                 }
                             });
                             
-                            // Actualizar texto con todas las caras detectadas
-                            const nombres = detecciones.map(d => d.nombre).join(", ");
-                            nombreDiv.textContent = `Detectando: ${nombres}`;
+                            // Actualizar texto con todas las caras detectadas, indicando cuáles ya están registradas
+                            const nombresFormateados = detecciones.map(d => 
+                                detectedFaces.has(d.nombre) ? `✓ ${d.nombre}` : d.nombre
+                            ).join(", ");
                             
-                            // Verificar si han pasado 3 segundos
+                            nombreDiv.textContent = `Detectando: ${nombresFormateados}`;
+                            
+                            // Verificar si han pasado los segundos necesarios
                             if (Date.now() - bufferStartTime >= BUFFER_DURATION) {
                                 procesarBuffers();
                             }
