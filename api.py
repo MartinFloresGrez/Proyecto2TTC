@@ -86,6 +86,24 @@ def crear_sesion(sesion: dict):
         return {"mensaje": "Sesión creada exitosamente."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.delete("/sesiones/{sesion_id}/asistencia")
+def eliminar_asistencia(sesion_id: str, datos: dict):
+    try:
+        if "nombre" not in datos:
+            raise HTTPException(status_code=400, detail="Falta el nombre del asistente")
+        nombre = datos["nombre"]
+        sesion_id_obj = ObjectId(sesion_id)
+        resultado = sesiones.update_one(
+            {"_id": sesion_id_obj},
+            {"$pull": {"asistentes": {"nombre": nombre}}}
+        )
+        if resultado.modified_count == 1:
+            return {"mensaje": "Asistencia eliminada correctamente"}
+        else:
+            raise HTTPException(status_code=404, detail="Asistente no encontrado en la sesión")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/sesiones/{sesion_id}/asistencia")
 def registrar_asistencia(sesion_id: str, datos: dict):

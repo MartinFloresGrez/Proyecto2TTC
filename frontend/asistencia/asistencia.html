@@ -32,6 +32,19 @@
             object-fit: cover;
             display: none; /* Always hidden, used only as source */
         }
+        #lista-asistencia button {
+            background: none;
+            border: none;
+            color: #d9534f; /* Rojo Bootstrap */
+            font-size: 1.2em;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        #lista-asistencia button:hover {
+            background: #f8d7da;
+        }
     </style>
 </head>
 <body>
@@ -118,6 +131,26 @@
             }
         }
 
+        async function eliminarAsistenciaBackend(nombre) {
+            if (!sesionId) {
+                console.error("No hay ID de sesión");
+                return false;
+            }
+            try {
+                const response = await fetch(`/sesiones/${sesionId}/asistencia`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ nombre })
+                });
+                return response.ok;
+            } catch (error) {
+                console.error("Error al eliminar asistencia:", error);
+                return false;
+            }
+        }
+
         // Modificar la función cargarAsistencia para usar los datos del backend
         async function cargarAsistencia() {
             // Obtener los datos actualizados del backend
@@ -141,9 +174,27 @@
                 const timeSpan = document.createElement('span');
                 timeSpan.className = 'time';
                 timeSpan.textContent = item.fecha;
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = '❌';
+                deleteBtn.className = 'btn btn-danger btn-sm';
+                deleteBtn.style.marginLeft = '10px';
+                deleteBtn.onclick = async () => {
+                    if (confirm(`¿Eliminar a ${item.nombre} de la asistencia?`)) {
+                        const exito = await eliminarAsistenciaBackend(item.nombre);
+                        if (exito) {
+                            // Quitar de la lista local y recargar
+                            asistencia = asistencia.filter(a => a.nombre !== item.nombre);
+                            cargarAsistencia();
+                        } else {
+                            alert('No se pudo eliminar del backend.');
+                        }
+                    }
+                };
                 
                 li.appendChild(nameSpan);
                 li.appendChild(timeSpan);
+                li.appendChild(deleteBtn);
                 lista.appendChild(li);
             });
         }
