@@ -50,14 +50,21 @@
         const BUFFER_DURATION = 3000; // 3 segundos
         const CONFIDENCE_THRESHOLD = 0.6; // 60% de frames deben coincidir
 
+        // Estados para la verificación de movimiento facial
         let esperandoRegistro = false;
+        let secuenciaMirada = ["frente", "izquierda", "derecha", "frente"];
+        let posicionActual = 0;
+        let ultimaPosicionCara = null;
+        let tiempoEnPosicion = 0;
 
         function iniciarBufferRegistro() {
             registroBuffer = [];
             bufferStartTime = Date.now();
             esperandoRegistro = true;
-            nombreDiv.textContent = "Mantén tu rostro visible durante 3 segundos...";
+            posicionActual = 0;
+            nombreDiv.textContent = "Para registrarte, mira al frente...";
         }
+
         function volverLobby() {
             window.location.href = "/"; // O ajusta la ruta si tu lobby está en otra URL
         }
@@ -67,6 +74,42 @@
             const coincidencias = registroBuffer.filter(n => n === nombre).length;
             const confianza = coincidencias / registroBuffer.length;
             return confianza;
+        }
+
+        function detectarPosicionCabeza(coordenadas) {
+            // Extraer coordenadas del rostro
+            const [top, right, bottom, left] = coordenadas;
+            
+            // Calcular ancho del rostro
+            const anchoRostro = right - left;
+            
+            // Calcular posición del centro del rostro respecto al canvas
+            const centroRostro = left + (anchoRostro / 2);
+            const centroPantalla = canvas.width / 2;
+            
+            // Determinar posición basada en la distancia del rostro respecto al centro
+            const umbralDesplazamiento = anchoRostro * 0.15; // 15% del ancho del rostro
+            
+            if (centroRostro < centroPantalla - umbralDesplazamiento) {
+                return "izquierda";
+            } else if (centroRostro > centroPantalla + umbralDesplazamiento) {
+                return "derecha";
+            } else {
+                return "frente";
+            }
+        }
+
+        function avanzarSecuencia() {
+            posicionActual++;
+            if (posicionActual < secuenciaMirada.length) {
+                nombreDiv.textContent = `Bien! Ahora mira hacia ${secuenciaMirada[posicionActual]}...`;
+            } else {
+                // Secuencia completada, proceder al registro
+                nombreDiv.textContent = "¡Perfecto! Registrando tu rostro...";
+                ultimaAccion = "registrar";
+                esperandoRegistro = false;
+            }
+            tiempoEnPosicion = 0;
         }
 
         function registrarRostro() {
@@ -112,38 +155,38 @@
                 });
                 nombreDetectado = detecciones.map(d => d.nombre).join(", ");
             }
-            nombreDiv.textContent = nombreDetectado;
-
-            // Lógica de buffer para registro
-            if (esperandoRegistro) {
-                // Buscar si la cara detectada es "Desconocido" (no registrada aún)
-                let nombreCara = "Desconocido";
-                if (detecciones.length > 0) {
-                    // Si hay varias, tomamos la primera
-                    nombreCara = detecciones[0].nombre;
-                }
-                registroBuffer.push(nombreCara);
-
-                // Mostrar progreso
-                const elapsed = Date.now() - bufferStartTime;
-                const progreso = Math.min(100, Math.round((elapsed / BUFFER_DURATION) * 100));
-                nombreDiv.textContent = `Mantén tu rostro visible... ${progreso}%`;
-
-                if (elapsed >= BUFFER_DURATION) {
-                    esperandoRegistro = false;
-                    const confianza = procesarBufferRegistro("Desconocido");
-                    if (confianza >= CONFIDENCE_THRESHOLD) {
-                        // Ahora sí, enviar la acción de registrar
-                        ultimaAccion = "registrar";
-                        idParaRegistrar = ""; // El backend asigna el id incremental
-                        nombreDiv.textContent = "Registrando rostro...";
-                    } else {
-                        nombreDiv.textContent = "No se detectó tu rostro de forma consistente. Intenta de nuevo.";
+            
+            // Solo mostrar nombre detectado si no estamos en proceso de registro
+            if (!esperandoRegistro) {
+                nombreDiv.textContent = nombreDetectado;
+            }
+            
+            // Lógica de secuencia de mirada para registro
+            if (esperandoRegistro && detecciones.length > 0) {
+                // Tomamos la primera cara detectada
+                const primeraCara = detecciones[0];
+                const posicionCara = detectarPosicionCabeza(primeraCara.coordenadas);
+                
+                // Verificar si coincide con la posición esperada
+                if (posicionCara === secuenciaMirada[posicionActual]) {
+                    tiempoEnPosicion += 200; // Incrementamos tiempo (asumiendo que este código se ejecuta cada 200ms aprox)
+                    
+                    // Mostrar progreso
+                    const porcentaje = Math.min(100, Math.round((tiempoEnPosicion / 1000) * 100));
+                    nombreDiv.textContent = `Mira hacia ${secuenciaMirada[posicionActual]}... ${porcentaje}%`;
+                    
+                    // Si mantuvo la posición durante 1 segundo
+                    if (tiempoEnPosicion >= 1000) {
+                        avanzarSecuencia();
                     }
-                    // Limpiar buffer
-                    registroBuffer = [];
-                    bufferStartTime = null;
+                } else {
+                    // Resetear el tiempo si se mueve fuera de la posición
+                    tiempoEnPosicion = 0;
+                    nombreDiv.textContent = `Mira hacia ${secuenciaMirada[posicionActual]}...`;
                 }
+                
+                // Guardar la posición para la próxima comparación
+                ultimaPosicionCara = posicionCara;
             }
         };
 

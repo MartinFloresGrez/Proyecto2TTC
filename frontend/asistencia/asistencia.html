@@ -95,7 +95,41 @@
         const params = new URLSearchParams(window.location.search);
         const sesionId = params.get('id');
 
+        // Agregar una función para obtener los asistentes de la sesión actual desde el backend
+
+        async function obtenerAsistentesBackend() {
+            if (!sesionId) {
+                console.error("No hay ID de sesión");
+                return [];
+            }
+            
+            try {
+                const response = await fetch(`/sesiones/${sesionId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.asistentes || [];
+                } else {
+                    console.error("Error al obtener asistentes:", await response.text());
+                    return [];
+                }
+            } catch (error) {
+                console.error("Error al recuperar asistentes:", error);
+                return [];
+            }
+        }
+
+        // Modificar la función cargarAsistencia para usar los datos del backend
         async function cargarAsistencia() {
+            // Obtener los datos actualizados del backend
+            const asistentesBackend = await obtenerAsistentesBackend();
+            
+            // Actualizar la lista local con los datos del backend
+            asistencia = asistentesBackend.map(asistente => ({
+                nombre: asistente.nombre,
+                fecha: new Date(asistente.fecha).toLocaleString()
+            }));
+            
+            // Actualizar la interfaz
             const lista = document.getElementById('lista-asistencia');
             lista.innerHTML = '';
             asistencia.forEach(item => {
@@ -160,10 +194,19 @@
                     if (resultado.confianza > CONFIDENCE_THRESHOLD) {
                         const yaRegistrado = asistencia.some(item => item.nombre === resultado.nombre);
                         if (!yaRegistrado) {
+                            // Agregar a la lista local
                             asistencia.push({
                                 nombre: resultado.nombre,
                                 fecha: new Date().toLocaleString()
                             });
+                            
+                            // Enviar al backend para guardar en la sesión
+                            registrarAsistenciaBackend(resultado.nombre)
+                                .then(exito => {
+                                    if (!exito) {
+                                        console.warn(`No se pudo guardar en la base de datos: ${resultado.nombre}`);
+                                    }
+                                });
                         }
                     }
                 });
@@ -178,6 +221,36 @@
             // Limpiar buffers
             faceBuffers = {};
             bufferStartTime = null;
+        }
+
+        async function registrarAsistenciaBackend(nombre) {
+            if (!sesionId) {
+                console.error("No hay ID de sesión");
+                return false;
+            }
+            
+            try {
+                const response = await fetch(`/sesiones/${sesionId}/asistencia`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        nombre: nombre,
+                        fecha: new Date().toISOString()
+                    })
+                });
+                
+                if (response.ok) {
+                    return true;
+                } else {
+                    console.error("Error al registrar asistencia:", await response.text());
+                    return false;
+                }
+            } catch (error) {
+                console.error("Error al enviar asistencia:", error);
+                return false;
+            }
         }
 
         toggleCamaraBtn.onclick = async function() {
@@ -326,7 +399,10 @@
             window.location.href = "../lobby/lobby.html";
         }
 
-        cargarAsistencia();
+        // Llamar a cargarAsistencia cuando la página se carga y también cuando cambia la lista local
+        document.addEventListener('DOMContentLoaded', () => {
+            cargarAsistencia();
+        });
     </script>
 </body>
 </html>

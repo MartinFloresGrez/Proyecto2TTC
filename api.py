@@ -7,6 +7,7 @@ import numpy as np
 import base64
 import cv2
 import face_recognition
+import datetime
 
 # ==== FastAPI App ====
 app = FastAPI()
@@ -83,6 +84,61 @@ def crear_sesion(sesion: dict):
         }
         sesiones.insert_one(nueva_sesion)
         return {"mensaje": "Sesión creada exitosamente."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/sesiones/{sesion_id}/asistencia")
+def registrar_asistencia(sesion_id: str, datos: dict):
+    try:
+        # Validar datos recibidos
+        if "nombre" not in datos:
+            raise HTTPException(status_code=400, detail="Falta el nombre del asistente")
+        
+        nombre = datos["nombre"]
+        fecha = datos.get("fecha", datetime.datetime.now().isoformat())
+        
+        # Convertir el ID de string a ObjectId
+        sesion_id_obj = ObjectId(sesion_id)
+        
+        # Verificar si el asistente ya está registrado
+        sesion = sesiones.find_one({"_id": sesion_id_obj})
+        if not sesion:
+            raise HTTPException(status_code=404, detail="Sesión no encontrada")
+            
+        asistentes = sesion.get("asistentes", [])
+        
+        # Verificar si el asistente ya está en la lista
+        for asistente in asistentes:
+            if asistente.get("nombre") == nombre:
+                return {"mensaje": "Asistente ya registrado"}
+        
+        # Agregar el nuevo asistente
+        resultado = sesiones.update_one(
+            {"_id": sesion_id_obj},
+            {"$push": {"asistentes": {"nombre": nombre, "fecha": fecha}}}
+        )
+        
+        if resultado.modified_count == 1:
+            return {"mensaje": "Asistencia registrada correctamente"}
+        else:
+            raise HTTPException(status_code=500, detail="No se pudo registrar la asistencia")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/sesiones/{sesion_id}")
+def obtener_sesion(sesion_id: str):
+    try:
+        sesion_id_obj = ObjectId(sesion_id)
+        sesion = sesiones.find_one({"_id": sesion_id_obj})
+        
+        if not sesion:
+            raise HTTPException(status_code=404, detail="Sesión no encontrada")
+        
+        # Convertir el ObjectId a string para que sea serializable en JSON
+        sesion["_id"] = str(sesion["_id"])
+        return sesion
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
