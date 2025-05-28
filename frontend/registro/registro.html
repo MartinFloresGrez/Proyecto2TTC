@@ -28,6 +28,7 @@
             <div class="button-group">
                 <button onclick="registrarRostro()" class="btn">Registrar</button>
                 <button onclick="borrarRostro()" class="btn btn-secondary">Borrar</button>
+                <button onclick="toggleDeteccion()" id="btnToggleDeteccion" class="btn btn-secondary" style="position:absolute; top:20px; right:20px; z-index:10;">Ocultar detección</button>
                 <button onclick="volverLobby()" class="btn">Volver</button>
             </div>
         </div>
@@ -47,8 +48,8 @@
 
         let registroBuffer = [];
         let bufferStartTime = null;
-        const BUFFER_DURATION = 3000; // 3 segundos
-        const CONFIDENCE_THRESHOLD = 0.6; // 60% de frames deben coincidir
+        const BUFFER_DURATION = 4000; // 3 segundos
+        const CONFIDENCE_THRESHOLD = 0.75; // 60% de frames deben coincidir
 
         // Estados para la verificación de movimiento facial
         let esperandoRegistro = false;
@@ -138,6 +139,16 @@
                 nombreDiv.textContent = "❌ No se pudo acceder a la cámara.";
             });
 
+        let mostrarDeteccion = true;
+
+        function toggleDeteccion() {
+            mostrarDeteccion = !mostrarDeteccion;
+            const btn = document.getElementById("btnToggleDeteccion");
+            btn.textContent = mostrarDeteccion ? "Ocultar detección" : "Mostrar detección";
+            const canvas = document.getElementById("canvas");
+            canvas.style.display = mostrarDeteccion ? "block" : "none";
+        }
+
         ws.onmessage = (event) => {
             detecciones = JSON.parse(event.data);
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -146,12 +157,14 @@
             if (detecciones.length > 0) {
                 detecciones.forEach(d => {
                     const [top, right, bottom, left] = d.coordenadas;
-                    ctx.strokeStyle = "red";
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(left, top, right - left, bottom - top);
-                    ctx.fillStyle = "green";
-                    ctx.font = "18px Arial";
-                    ctx.fillText(d.nombre, left + 5, top - 5);
+                    if (mostrarDeteccion) {
+                        ctx.strokeStyle = "red";
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(left, top, right - left, bottom - top);
+                        ctx.fillStyle = "green";
+                        ctx.font = "18px Arial";
+                        ctx.fillText(d.nombre, left + 5, top - 5);
+                    }
                 });
                 nombreDetectado = detecciones.map(d => d.nombre).join(", ");
             }
