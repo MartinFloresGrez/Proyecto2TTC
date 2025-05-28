@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket, Path
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 from pymongo import MongoClient
@@ -86,6 +86,46 @@ def crear_sesion(sesion: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/sesiones/{sesion_id}")
+def obtener_sesion(sesion_id: str):
+    sesion = sesiones.find_one({"_id": ObjectId(sesion_id)})
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    sesion["_id"] = str(sesion["_id"])
+    return sesion
+
+@app.post("/sesiones/{sesion_id}/asistencia")
+def registrar_asistencia(sesion_id: str, data: dict):
+    nombre = data.get("nombre")
+    fecha = data.get("fecha")
+    if not nombre:
+        raise HTTPException(status_code=400, detail="Nombre requerido")
+    sesion = sesiones.find_one({"_id": ObjectId(sesion_id)})
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    # Evitar duplicados
+    if any(a["nombre"] == nombre for a in sesion.get("asistentes", [])):
+        return {"mensaje": "Ya registrado"}
+    sesiones.update_one(
+        {"_id": ObjectId(sesion_id)},
+        {"$push": {"asistentes": {"nombre": nombre, "fecha": fecha}}}
+    )
+    return {"mensaje": "Asistencia registrada"}
+
+@app.delete("/sesiones/{sesion_id}/asistencia")
+def eliminar_asistencia(sesion_id: str, data: dict):
+    nombre = data.get("nombre")
+    if not nombre:
+        raise HTTPException(status_code=400, detail="Nombre requerido")
+    sesion = sesiones.find_one({"_id": ObjectId(sesion_id)})
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    sesiones.update_one(
+        {"_id": ObjectId(sesion_id)},
+        {"$pull": {"asistentes": {"nombre": nombre}}}
+    )
+    return {"mensaje": "Asistencia eliminada"}
+
 # ==== WebSocket para detección en tiempo real desde navegador ====
 
 @app.websocket("/ws")
@@ -108,7 +148,7 @@ async def websocket_endpoint(websocket: WebSocket):
             detecciones = []
             for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
                 nombre = "Desconocido"
-                match = face_recognition.compare_faces(encodings_conocidos, face_encoding)
+                match = face_recognition.compare_faces(encodings_conocidos, face_encoding,0.4)
                 if True in match:
                     index = match.index(True)
                     nombre = nombres_conocidos[index]

@@ -200,16 +200,12 @@
         }
         
         // Función para procesar el buffer de detecciones para una cara específica
-        function procesarBufferCara(nombre, detecciones) {
-            if (detecciones.length === 0) return null;
-            
-            // Calcular el nivel de confianza como porcentaje
-            const nivelConfianza = detecciones.length / (BUFFER_DURATION / 1000);
-            const porcentajeConfianza = Math.round((nivelConfianza / 3) * 100); // Ajustar a un máximo de 3 detecciones por segundo
-            
+        function procesarBufferCara(nombre, detecciones, totalFrames) {
+            if (detecciones.length === 0 || totalFrames === 0) return null;
+            const porcentajeConfianza = Math.round((detecciones.length / totalFrames) * 100);
             return {
                 nombre: nombre,
-                confianza: nivelConfianza,
+                confianza: detecciones.length / totalFrames,
                 porcentaje: porcentajeConfianza
             };
         }
@@ -217,13 +213,14 @@
         // Función para procesar todos los buffers
         function procesarBuffers() {
             if (Object.keys(faceBuffers).length === 0) return;
-            
+
+            // Calcular el total de frames recibidos en el buffer
+            const totalFrames = Object.values(faceBuffers).reduce((acc, arr) => acc + arr.length, 0);
+
             const resultados = [];
-            
-            // Procesar cada cara detectada
             for (const [nombre, buffer] of Object.entries(faceBuffers)) {
                 if (nombre !== "Desconocido") {
-                    const resultado = procesarBufferCara(nombre, buffer);
+                    const resultado = procesarBufferCara(nombre, buffer, totalFrames);
                     if (resultado && resultado.confianza > CONFIDENCE_THRESHOLD) {
                         resultados.push(resultado);
                     }
