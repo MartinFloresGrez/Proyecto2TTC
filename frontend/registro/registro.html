@@ -48,22 +48,19 @@
 
         let registroBuffer = [];
         let bufferStartTime = null;
-        const BUFFER_DURATION = 4000; // 3 segundos
-        const CONFIDENCE_THRESHOLD = 0.75; // 60% de frames deben coincidir
+        const BUFFER_DURATION = 3000; // 3 segundos
+        const CONFIDENCE_THRESHOLD = 0.6; // 60% de frames deben coincidir
 
-        // Estados para la verificación de movimiento facial
+        // Estado simple para el registro
         let esperandoRegistro = false;
-        let secuenciaMirada = ["frente", "izquierda", "derecha", "frente"];
-        let posicionActual = 0;
-        let ultimaPosicionCara = null;
-        let tiempoEnPosicion = 0;
+        let tiempoTranscurrido = 0;
 
         function iniciarBufferRegistro() {
             registroBuffer = [];
             bufferStartTime = Date.now();
             esperandoRegistro = true;
-            posicionActual = 0;
-            nombreDiv.textContent = "Para registrarte, mira al frente...";
+            tiempoTranscurrido = 0;
+            nombreDiv.textContent = "Mantente quieto por 3 segundos para el registro...";
         }
 
         function volverLobby() {
@@ -174,32 +171,23 @@
                 nombreDiv.textContent = nombreDetectado;
             }
             
-            // Lógica de secuencia de mirada para registro
+            // Lógica simplificada para registro
             if (esperandoRegistro && detecciones.length > 0) {
-                // Tomamos la primera cara detectada
-                const primeraCara = detecciones[0];
-                const posicionCara = detectarPosicionCabeza(primeraCara.coordenadas);
+                tiempoTranscurrido += 200; // Asumiendo que este código se ejecuta cada 200ms aprox
                 
-                // Verificar si coincide con la posición esperada
-                if (posicionCara === secuenciaMirada[posicionActual]) {
-                    tiempoEnPosicion += 200; // Incrementamos tiempo (asumiendo que este código se ejecuta cada 200ms aprox)
-                    
-                    // Mostrar progreso
-                    const porcentaje = Math.min(100, Math.round((tiempoEnPosicion / 1000) * 100));
-                    nombreDiv.textContent = `Mira hacia ${secuenciaMirada[posicionActual]}... ${porcentaje}%`;
-                    
-                    // Si mantuvo la posición durante 1 segundo
-                    if (tiempoEnPosicion >= 1000) {
-                        avanzarSecuencia();
-                    }
-                } else {
-                    // Resetear el tiempo si se mueve fuera de la posición
-                    tiempoEnPosicion = 0;
-                    nombreDiv.textContent = `Mira hacia ${secuenciaMirada[posicionActual]}...`;
+                // Guardar el nombre detectado en el buffer para calcular confianza después
+                registroBuffer.push(detecciones[0].nombre);
+                
+                // Mostrar progreso
+                const porcentaje = Math.min(100, Math.round((tiempoTranscurrido / BUFFER_DURATION) * 100));
+                nombreDiv.textContent = `Mantente quieto... ${porcentaje}%`;
+                
+                // Verificar si se completó el tiempo
+                if (tiempoTranscurrido >= BUFFER_DURATION) {
+                    nombreDiv.textContent = "¡Perfecto! Registrando tu rostro...";
+                    ultimaAccion = "registrar";
+                    esperandoRegistro = false;
                 }
-                
-                // Guardar la posición para la próxima comparación
-                ultimaPosicionCara = posicionCara;
             }
         };
 
